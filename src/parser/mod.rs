@@ -32,8 +32,47 @@ struct PEHeader {
 struct NtHeaders {
   signature: String,
   file_header: FileHeader,
-  // optional_header: Option<OptionalHeader>,
+  optional_header: Option<OptionalHeader>,
 }
+
+#[derive(Debug)]
+enum OptionalHeader {
+  ImageOptionalHeader32(ImageOptionalHeader32),
+  ImageOptionalHeader64(ImageOptionalHeader64),
+  ImageOptionalHeaderRom(ImageOptionalHeaderRom),
+}
+
+impl Default for OptionalHeader {
+  fn default() -> Self {
+    Self::ImageOptionalHeader32(ImageOptionalHeader32::default())
+  }
+}
+
+#[derive(Debug, Default)]
+struct CommonOptionalHeaderFields {
+  magic: u16,
+  major_linker_version: u8,
+  minor_linker_version: u8,
+  size_of_code: u32, // The size of the code (text) section, or the sum of all code sections if there are multiple sections.
+  size_of_initialized_data: u32, // The size of the initialized data section, or the sum of all such sections if there are multiple data sections.
+  size_of_uninitialized_data: u32, // The size of the uninitialized data section (BSS), or the sum of all such sections if there are multiple BSS sections.
+  address_of_entry_point: u32, // The address of the entry point relative to the image base when the executable file is loaded into memory. For program images, this is the starting address. For device drivers, this is the address of the initialization function. An entry point is optional for DLLs. When no entry point is present, this field must be zero.
+  base_of_code: u32, // The address that is relative to the image base of the beginning-of-code section when it is loaded into memory.
+}
+
+#[derive(Debug, Default)]
+struct ImageOptionalHeader32 {
+  common: CommonOptionalHeaderFields,
+  base_of_data: u32, // The address that is relative to the image base of the beginning-of-code section when it is loaded into memory.
+}
+
+#[derive(Debug, Default)]
+struct ImageOptionalHeader64 {
+  common: CommonOptionalHeaderFields,
+}
+
+#[derive(Debug, Default)]
+struct ImageOptionalHeaderRom;
 
 #[derive(Debug, Default)]
 struct FileHeader {
@@ -118,12 +157,14 @@ fn parse_dos_header<'s>(input: &mut &'s [u8]) -> PResult<(DOSHeader, Vec<u8>)> {
 
 fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
   let mut nt_header = NtHeaders::default();
+
+  // Signature
   pretty_print_bytes(input);
   nt_header.signature = get_ascii_string(input, 4)?; // should be PE\0\0, 4 bytes since its a DWORD
   pretty_print_bytes(input);
 
+  // File Header
   let mut file_header = FileHeader::default();
-
   file_header.machine = MachineType::try_from(get_le_u16.parse_next(input)?)
     .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
   file_header.number_of_sections = get_le_u16.parse_next(input)?;
@@ -137,9 +178,32 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
   file_header.characteristics.characteristics =
     Characteristics::get_characteristics(characteristics_u16);
 
-  println!("file_header: {:#?}", file_header.machine);
-
   nt_header.file_header = file_header;
+
+  // Optional Header
+  if nt_header.file_header.size_of_optional_header == 0 {
+    return Ok(nt_header);
+  }
+
+  let mut optional_header_bytes = take_while(
+    0..=nt_header.file_header.size_of_optional_header as usize,
+    |_| true,
+  )
+  .parse_next(input)?;
+  if optional_header_bytes.len() != nt_header.file_header.size_of_optional_header as usize {
+    return Err(ErrMode::Incomplete(Needed::new(
+      nt_header.file_header.size_of_optional_header as usize,
+    )));
+  }
+
+  let magic = get_le_u16.parse_next(&mut optional_header_bytes)?;
+  let optional_header = match magic {
+    0x10b => OptionalHeader::ImageOptionalHeader32(ImageOptionalHeader32::default()),
+    0x20b => OptionalHeader::ImageOptionalHeader64(ImageOptionalHeader64::default()),
+    0x107 => OptionalHeader::ImageOptionalHeaderRom(ImageOptionalHeaderRom::default()),
+    _ => return Err(ErrMode::from_error_kind(input, ErrorKind::Verify)),
+  };
+
   Ok(nt_header)
 }
 fn parse_pe_header<'s>(input: &mut &'s [u8]) -> PResult<PEHeader> {
