@@ -1,5 +1,8 @@
 use std::fmt::LowerHex;
 use strum::{EnumIter, IntoEnumIterator};
+use winnow::error::ErrMode;
+use winnow::error::ErrorKind;
+use winnow::error::ParserError;
 use winnow::token::take_while;
 use winnow::PResult;
 use winnow::Parser;
@@ -179,8 +182,50 @@ impl Into<u16> for Characteristics {
   }
 }
 
+#[derive(Debug, Default)]
+pub enum OptionalHeaderSubSystem {
+  #[default]
+  IMAGE_SUBSYSTEM_UNKNOWN, // 	An unknown subsystem
+  IMAGE_SUBSYSTEM_NATIVE,      // 	Device drivers and native Windows processes
+  IMAGE_SUBSYSTEM_WINDOWS_GUI, // 	The Windows graphical user interface (GUI) subsystem
+  IMAGE_SUBSYSTEM_WINDOWS_CUI, // 	The Windows character subsystem
+  IMAGE_SUBSYSTEM_OS2_CUI,     // 	The OS/2 character subsystem
+  IMAGE_SUBSYSTEM_POSIX_CUI,   // 	The Posix character subsystem
+  IMAGE_SUBSYSTEM_NATIVE_WINDOWS, // 	Native Win9x driver
+  IMAGE_SUBSYSTEM_WINDOWS_CE_GUI, // 	Windows CE
+  IMAGE_SUBSYSTEM_EFI_APPLICATION, // 	An Extensible Firmware Interface (EFI) application
+  IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER, // 	An EFI driver with boot services
+  IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER, // 	An EFI driver with run-time services
+  IMAGE_SUBSYSTEM_EFI_ROM,     // 	An EFI ROM image
+  IMAGE_SUBSYSTEM_XBOX,        // 	XBOX
+  IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION, // 	Windows boot application.
+}
+
+impl TryFrom<u16> for OptionalHeaderSubSystem {
+  type Error = ();
+  fn try_from(value: u16) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(Self::IMAGE_SUBSYSTEM_UNKNOWN),
+      1 => Ok(Self::IMAGE_SUBSYSTEM_NATIVE),
+      2 => Ok(Self::IMAGE_SUBSYSTEM_WINDOWS_GUI),
+      3 => Ok(Self::IMAGE_SUBSYSTEM_WINDOWS_CUI),
+      5 => Ok(Self::IMAGE_SUBSYSTEM_OS2_CUI),
+      7 => Ok(Self::IMAGE_SUBSYSTEM_POSIX_CUI),
+      8 => Ok(Self::IMAGE_SUBSYSTEM_NATIVE_WINDOWS),
+      9 => Ok(Self::IMAGE_SUBSYSTEM_WINDOWS_CE_GUI),
+      10 => Ok(Self::IMAGE_SUBSYSTEM_EFI_APPLICATION),
+      11 => Ok(Self::IMAGE_SUBSYSTEM_EFI_BOOT_SERVICE_DRIVER),
+      12 => Ok(Self::IMAGE_SUBSYSTEM_EFI_RUNTIME_DRIVER),
+      13 => Ok(Self::IMAGE_SUBSYSTEM_EFI_ROM),
+      14 => Ok(Self::IMAGE_SUBSYSTEM_XBOX),
+      16 => Ok(Self::IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION),
+      _ => Err(()),
+    }
+  }
+}
+
 pub fn format_to_hex<T: LowerHex>(data: &T) -> String {
-  format!("{:02x} ", data)
+  format!("{:0x} ", data)
 }
 
 pub fn get_ascii_string<'s>(input: &mut &'s [u8], len: usize) -> PResult<String> {
@@ -191,20 +236,53 @@ pub fn get_ascii_string<'s>(input: &mut &'s [u8], len: usize) -> PResult<String>
 
 pub fn get_le_u16<'s>(input: &mut &'s [u8]) -> PResult<u16> {
   let bytes = take_while(2, |_| true).parse_next(input)?;
+  if bytes.len() != 2 {
+    return Err(ErrMode::from_error_kind(input, ErrorKind::Verify));
+  }
   let num = u16::from_le_bytes([bytes[0], bytes[1]]);
   Ok(num)
 }
 
+pub fn get_single_u8<'s>(input: &mut &'s [u8]) -> PResult<u8> {
+  let bytes = take_while(1, |_| true).parse_next(input)?;
+  if bytes.len() != 1 {
+    return Err(ErrMode::from_error_kind(input, ErrorKind::Verify));
+  }
+  Ok(bytes[0])
+}
+
 pub fn get_le_u32<'s>(input: &mut &'s [u8]) -> PResult<u32> {
   let bytes = take_while(4, |_| true).parse_next(input)?;
+  if bytes.len() != 4 {
+    return Err(ErrMode::from_error_kind(input, ErrorKind::Verify));
+  }
   let num = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
   Ok(num)
 }
 
+pub fn get_le_u64<'s>(input: &mut &'s [u8]) -> PResult<u64> {
+  let bytes = take_while(8, |_| true).parse_next(input)?;
+  if bytes.len() != 8 {
+    return Err(ErrMode::from_error_kind(input, ErrorKind::Verify));
+  }
+  let num = u64::from_le_bytes([
+    bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+  ]);
+  Ok(num)
+}
+
 pub fn get_le_u16_vec<'s>(input: &mut &'s [u8], len: usize) -> PResult<Vec<u16>> {
+  // len must be divisible by 2
+  if len % 2 != 0 {
+    return Err(ErrMode::from_error_kind(input, ErrorKind::Verify));
+  }
+
   let mut arr = Vec::with_capacity(len);
   for _ in 0..len {
     let bytes = take_while(2, |_| true).parse_next(input)?;
+    if bytes.len() != 2 {
+      return Err(ErrMode::from_error_kind(input, ErrorKind::Verify));
+    }
     arr.push(u16::from_le_bytes([bytes[0], bytes[1]]));
   }
   Ok(arr)

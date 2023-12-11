@@ -1,4 +1,6 @@
-use crate::parser::utils::{Characteristics, MachineType};
+use crate::parser::utils::{
+  get_le_u64, get_single_u8, Characteristics, MachineType, OptionalHeaderSubSystem,
+};
 use winnow::error::ErrMode;
 use winnow::error::ErrorKind;
 use winnow::error::Needed;
@@ -64,15 +66,59 @@ struct CommonOptionalHeaderFields {
 struct ImageOptionalHeader32 {
   common: CommonOptionalHeaderFields,
   base_of_data: u32, // The address that is relative to the image base of the beginning-of-code section when it is loaded into memory.
+  image_base: u32, // The preferred address of the first byte of image when loaded into memory; must be a multiple of 64 K. The default for DLLs is 0x10000000. The default for Windows CE EXEs is 0x00010000. The default for Windows NT, Windows 2000, Windows XP, Windows 95, Windows 98, and Windows Me is 0x00400000.
+  section_alignment: u32, // The alignment (in bytes) of sections when they are loaded into memory. It must be greater than or equal to FileAlignment. The default is the page size for the architecture.
+  file_alignment: u32, // The alignment (in bytes) of sections when they are loaded into memory. It must be greater than or equal to FileAlignment. The default is the page size for the architecture.
+  major_operating_system_version: u16, // The major version number of the required operating system.
+  minor_operating_system_version: u16, // The minor version number of the required operating system.
+  major_image_version: u16, // The major version number of the image.
+  minor_image_version: u16, // The minor version number of the image.
+  major_subsystem_version: u16, // The major version number of the subsystem.
+  minor_subsystem_version: u16, // The minor version number of the subsystem.
+  win32_version_value: u32, // Reserved, must be zero.
+  size_of_image: u32, // The size (in bytes) of the image, including all headers, as the image is loaded in memory. It must be a multiple of SectionAlignment.
+  size_of_headers: u32, // The combined size of an MS-DOS stub, PE header, and section headers rounded up to a multiple of FileAlignment.
+  checksum: u32, // The image file checksum. The following files are validated at load time: all drivers, any DLL loaded at boot time, and any DLL loaded into a critical system process.
+  subsystem: OptionalHeaderSubSystem, // The subsystem that is required to run this image.
+  dll_characteristics: u16, // The DLL characteristics of the image.
+  size_of_stack_reserve: u32, // The number of bytes to reserve for the stack. Only the memory specified by the SizeOfStackCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
+  size_of_stack_commit: u32,  // The number of bytes to commit for the stack.
+  size_of_heap_reserve: u32, // The number of bytes to reserve for the local heap. Only the memory specified by the SizeOfHeapCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
+  size_of_heap_commit: u32,  // The number of bytes to commit for the local heap.
+  loader_flags: u32,         // Reserved, must be zero.
+  number_of_rva_and_sizes: u32, // The number of directory entries in the remainder of the optional header. Each entry describes a location and size.
 }
 
 #[derive(Debug, Default)]
 struct ImageOptionalHeader64 {
   common: CommonOptionalHeaderFields,
+  image_base: u64, // The preferred address of the first byte of image when loaded into memory; must be a multiple of 64 K. The default for DLLs is 0x10000000. The default for Windows CE EXEs is 0x00010000. The default for Windows NT, Windows 2000, Windows XP, Windows 95, Windows 98, and Windows Me is 0x00400000.
+  section_alignment: u32, // The alignment (in bytes) of sections when they are loaded into memory. It must be greater than or equal to FileAlignment. The default is the page size for the architecture.
+  file_alignment: u32, // The alignment (in bytes) of sections when they are loaded into memory. It must be greater than or equal to FileAlignment. The default is the page size for the architecture.
+  major_operating_system_version: u16, // The major version number of the required operating system.
+  minor_operating_system_version: u16, // The minor version number of the required operating system.
+  major_image_version: u16, // The major version number of the image.
+  minor_image_version: u16, // The minor version number of the image.
+  major_subsystem_version: u16, // The major version number of the subsystem.
+  minor_subsystem_version: u16, // The minor version number of the subsystem.
+  win32_version_value: u32, // Reserved, must be zero.
+  size_of_image: u32, // The size (in bytes) of the image, including all headers, as the image is loaded in memory. It must be a multiple of SectionAlignment.
+  size_of_headers: u32, // The combined size of an MS-DOS stub, PE header, and section headers rounded up to a multiple of FileAlignment.
+  checksum: u32, // The image file checksum. The following files are validated at load time: all drivers, any DLL loaded at boot time, and any DLL loaded into a critical system process.
+  subsystem: OptionalHeaderSubSystem, // The subsystem that is required to run this image.
+  dll_characteristics: u16, // The DLL characteristics of the image.
+  size_of_stack_reserve: u64, // The number of bytes to reserve for the stack. Only the memory specified by the SizeOfStackCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
+  size_of_stack_commit: u64,  // The number of bytes to commit for the stack.
+  size_of_heap_reserve: u64, // The number of bytes to reserve for the local heap. Only the memory specified by the SizeOfHeapCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
+  size_of_heap_commit: u64,  // The number of bytes to commit for the local heap.
+  loader_flags: u32,         // Reserved, must be zero.
+  number_of_rva_and_sizes: u32, // The number of directory entries in the remainder of the optional header. Each entry describes a location and size.
 }
 
 #[derive(Debug, Default)]
-struct ImageOptionalHeaderRom;
+struct ImageOptionalHeaderRom {
+  common: CommonOptionalHeaderFields,
+}
 
 #[derive(Debug, Default)]
 struct FileHeader {
@@ -197,12 +243,88 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
   }
 
   let magic = get_le_u16.parse_next(&mut optional_header_bytes)?;
-  let optional_header = match magic {
+  let mut optional_header = match magic {
     0x10b => OptionalHeader::ImageOptionalHeader32(ImageOptionalHeader32::default()),
     0x20b => OptionalHeader::ImageOptionalHeader64(ImageOptionalHeader64::default()),
     0x107 => OptionalHeader::ImageOptionalHeaderRom(ImageOptionalHeaderRom::default()),
     _ => return Err(ErrMode::from_error_kind(input, ErrorKind::Verify)),
   };
+
+  let mut common = CommonOptionalHeaderFields::default();
+  common.magic = magic;
+
+  common.major_linker_version = get_single_u8.parse_next(&mut optional_header_bytes)?;
+  common.minor_linker_version = get_single_u8.parse_next(&mut optional_header_bytes)?;
+  common.size_of_code = get_le_u32.parse_next(&mut optional_header_bytes)?;
+  common.size_of_initialized_data = get_le_u32.parse_next(&mut optional_header_bytes)?;
+  common.size_of_uninitialized_data = get_le_u32.parse_next(&mut optional_header_bytes)?;
+  common.address_of_entry_point = get_le_u32.parse_next(&mut optional_header_bytes)?;
+  common.base_of_code = get_le_u32.parse_next(&mut optional_header_bytes)?;
+
+  match &mut optional_header {
+    OptionalHeader::ImageOptionalHeader32(header) => {
+      header.common = common;
+      header.base_of_data = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.image_base = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.section_alignment = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.file_alignment = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.major_operating_system_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.minor_operating_system_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.major_image_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.minor_image_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.major_subsystem_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.minor_subsystem_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.win32_version_value = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_image = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_headers = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.checksum = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.subsystem =
+        OptionalHeaderSubSystem::try_from(get_le_u16.parse_next(&mut optional_header_bytes)?)
+          .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
+      header.dll_characteristics = get_le_u16.parse_next(&mut optional_header_bytes)?;
+
+      // 32 bits part
+      header.size_of_stack_reserve = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_stack_commit = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_heap_reserve = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_heap_commit = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.loader_flags = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.number_of_rva_and_sizes = get_le_u32.parse_next(&mut optional_header_bytes)?;
+    }
+    OptionalHeader::ImageOptionalHeader64(header) => {
+      header.common = common;
+      header.image_base = get_le_u64.parse_next(&mut optional_header_bytes)?;
+      header.section_alignment = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.file_alignment = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.major_operating_system_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.minor_operating_system_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.major_image_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.minor_image_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.major_subsystem_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.minor_subsystem_version = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.win32_version_value = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_image = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.size_of_headers = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.checksum = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.subsystem =
+        OptionalHeaderSubSystem::try_from(get_le_u16.parse_next(&mut optional_header_bytes)?)
+          .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
+      header.dll_characteristics = get_le_u16.parse_next(&mut optional_header_bytes)?;
+
+      // 64 bits part
+      header.size_of_stack_reserve = get_le_u64.parse_next(&mut optional_header_bytes)?;
+      header.size_of_stack_commit = get_le_u64.parse_next(&mut optional_header_bytes)?;
+      header.size_of_heap_reserve = get_le_u64.parse_next(&mut optional_header_bytes)?;
+      header.size_of_heap_commit = get_le_u64.parse_next(&mut optional_header_bytes)?;
+      header.loader_flags = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      header.number_of_rva_and_sizes = get_le_u32.parse_next(&mut optional_header_bytes)?;
+    }
+    OptionalHeader::ImageOptionalHeaderRom(header) => {
+      header.common = common;
+    }
+  }
+
+  nt_header.optional_header = Some(optional_header);
 
   Ok(nt_header)
 }
