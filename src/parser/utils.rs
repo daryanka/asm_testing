@@ -280,22 +280,22 @@ impl DLLCharacteristics {
 #[allow(non_camel_case_types)]
 pub enum DataDirectoryTableField {
   #[default]
-  EXPORT_TABLE,
-  IMPORT_TABLE,
-  RESOURCE_TABLE,
-  EXCEPTION_TABLE,
-  CERTIFICATE_TABLE,
-  BASE_RELOCATION_TABLE,
-  DEBUG,
-  ARCHITECTURE,
-  GLOBAL_PTR,
-  TLS_TABLE,
-  LOAD_CONFIG_TABLE,
-  BOUND_IMPORT,
-  IAT,
-  DELAY_IMPORT_DESCRIPTOR,
-  CLR_RUNTIME_HEADER,
-  RESERVED,
+  EXPORT_TABLE, // The export table address and size
+  IMPORT_TABLE,            // The import table address and size
+  RESOURCE_TABLE,          // The resource table address and size
+  EXCEPTION_TABLE,         // The exception table address and size
+  CERTIFICATE_TABLE,       // The attribute certificate table address and size
+  BASE_RELOCATION_TABLE,   // The base relocation table address and size
+  DEBUG,                   // The debug data starting address and size
+  ARCHITECTURE,            // Reserved, must be zero
+  GLOBAL_PTR, // The RVA of the value to be stored in the global pointer register. The size member of this structure must be set to zero.
+  TLS_TABLE,  // The thread local storage (TLS) table address and size
+  LOAD_CONFIG_TABLE, // The load configuration table address and size
+  BOUND_IMPORT, // The bound import table address and size
+  IAT,        // The import address table address and size
+  DELAY_IMPORT_DESCRIPTOR, // The delay import descriptor address and size
+  CLR_RUNTIME_HEADER, // The CLR runtime header address and size
+  RESERVED,   // Reserved, must be zero
 }
 
 impl TryFrom<u32> for DataDirectoryTableField {
