@@ -1,5 +1,6 @@
 use crate::parser::utils::{
-  get_le_u64, get_single_u8, Characteristics, MachineType, OptionalHeaderSubSystem,
+  get_le_u64, get_single_u8, Characteristics, DLLCharacteristics, DataDirectoryTableField,
+  MachineType, OptionalHeaderSubSystem,
 };
 use winnow::error::ErrMode;
 use winnow::error::ErrorKind;
@@ -80,13 +81,14 @@ struct ImageOptionalHeader32 {
   size_of_headers: u32, // The combined size of an MS-DOS stub, PE header, and section headers rounded up to a multiple of FileAlignment.
   checksum: u32, // The image file checksum. The following files are validated at load time: all drivers, any DLL loaded at boot time, and any DLL loaded into a critical system process.
   subsystem: OptionalHeaderSubSystem, // The subsystem that is required to run this image.
-  dll_characteristics: u16, // The DLL characteristics of the image.
+  dll_characteristics: Vec<DLLCharacteristics>, // (u16) // The DLL characteristics of the image.
   size_of_stack_reserve: u32, // The number of bytes to reserve for the stack. Only the memory specified by the SizeOfStackCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
   size_of_stack_commit: u32,  // The number of bytes to commit for the stack.
   size_of_heap_reserve: u32, // The number of bytes to reserve for the local heap. Only the memory specified by the SizeOfHeapCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
   size_of_heap_commit: u32,  // The number of bytes to commit for the local heap.
   loader_flags: u32,         // Reserved, must be zero.
   number_of_rva_and_sizes: u32, // The number of directory entries in the remainder of the optional header. Each entry describes a location and size.
+  data_directories: Vec<DataDirectory>,
 }
 
 #[derive(Debug, Default)]
@@ -106,13 +108,21 @@ struct ImageOptionalHeader64 {
   size_of_headers: u32, // The combined size of an MS-DOS stub, PE header, and section headers rounded up to a multiple of FileAlignment.
   checksum: u32, // The image file checksum. The following files are validated at load time: all drivers, any DLL loaded at boot time, and any DLL loaded into a critical system process.
   subsystem: OptionalHeaderSubSystem, // The subsystem that is required to run this image.
-  dll_characteristics: u16, // The DLL characteristics of the image.
+  dll_characteristics: Vec<DLLCharacteristics>, // (u16) // The DLL characteristics of the image.
   size_of_stack_reserve: u64, // The number of bytes to reserve for the stack. Only the memory specified by the SizeOfStackCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
   size_of_stack_commit: u64,  // The number of bytes to commit for the stack.
   size_of_heap_reserve: u64, // The number of bytes to reserve for the local heap. Only the memory specified by the SizeOfHeapCommit member is committed at load time; the rest is made available one page at a time until this reserve size is reached.
   size_of_heap_commit: u64,  // The number of bytes to commit for the local heap.
   loader_flags: u32,         // Reserved, must be zero.
   number_of_rva_and_sizes: u32, // The number of directory entries in the remainder of the optional header. Each entry describes a location and size.
+  data_directories: Vec<DataDirectory>,
+}
+
+#[derive(Debug, Default)]
+struct DataDirectory {
+  virtual_address: u32,
+  size: u32,
+  field: DataDirectoryTableField,
 }
 
 #[derive(Debug, Default)]
@@ -205,9 +215,7 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
   let mut nt_header = NtHeaders::default();
 
   // Signature
-  pretty_print_bytes(input);
   nt_header.signature = get_ascii_string(input, 4)?; // should be PE\0\0, 4 bytes since its a DWORD
-  pretty_print_bytes(input);
 
   // File Header
   let mut file_header = FileHeader::default();
@@ -281,7 +289,8 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
       header.subsystem =
         OptionalHeaderSubSystem::try_from(get_le_u16.parse_next(&mut optional_header_bytes)?)
           .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
-      header.dll_characteristics = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.dll_characteristics =
+        DLLCharacteristics::from_u16(get_le_u16.parse_next(&mut optional_header_bytes)?);
 
       // 32 bits part
       header.size_of_stack_reserve = get_le_u32.parse_next(&mut optional_header_bytes)?;
@@ -290,6 +299,22 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
       header.size_of_heap_commit = get_le_u32.parse_next(&mut optional_header_bytes)?;
       header.loader_flags = get_le_u32.parse_next(&mut optional_header_bytes)?;
       header.number_of_rva_and_sizes = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      // number of rva and sizes should always be 16 with the last row (8 bytes) being 0
+
+      let mut data_directories = Vec::new();
+      for index in 0..header.number_of_rva_and_sizes {
+        let virtual_address = get_le_u32.parse_next(&mut optional_header_bytes)?;
+        let size = get_le_u32.parse_next(&mut optional_header_bytes)?;
+        let field = DataDirectoryTableField::try_from(index)
+          .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
+
+        data_directories.push(DataDirectory {
+          virtual_address,
+          size,
+          field,
+        });
+      }
+      header.data_directories = data_directories;
     }
     OptionalHeader::ImageOptionalHeader64(header) => {
       header.common = common;
@@ -309,7 +334,8 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
       header.subsystem =
         OptionalHeaderSubSystem::try_from(get_le_u16.parse_next(&mut optional_header_bytes)?)
           .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
-      header.dll_characteristics = get_le_u16.parse_next(&mut optional_header_bytes)?;
+      header.dll_characteristics =
+        DLLCharacteristics::from_u16(get_le_u16.parse_next(&mut optional_header_bytes)?);
 
       // 64 bits part
       header.size_of_stack_reserve = get_le_u64.parse_next(&mut optional_header_bytes)?;
@@ -318,6 +344,22 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
       header.size_of_heap_commit = get_le_u64.parse_next(&mut optional_header_bytes)?;
       header.loader_flags = get_le_u32.parse_next(&mut optional_header_bytes)?;
       header.number_of_rva_and_sizes = get_le_u32.parse_next(&mut optional_header_bytes)?;
+      // number of rva and sizes should always be 16 with the last row (8 bytes) being 0
+
+      let mut data_directories = Vec::new();
+      for index in 0..header.number_of_rva_and_sizes {
+        let virtual_address = get_le_u32.parse_next(&mut optional_header_bytes)?;
+        let size = get_le_u32.parse_next(&mut optional_header_bytes)?;
+        let field = DataDirectoryTableField::try_from(index)
+          .map_err(|_| ParserError::from_error_kind(input, ErrorKind::Verify))?;
+
+        data_directories.push(DataDirectory {
+          virtual_address,
+          size,
+          field,
+        });
+      }
+      header.data_directories = data_directories;
     }
     OptionalHeader::ImageOptionalHeaderRom(header) => {
       header.common = common;
@@ -355,6 +397,7 @@ pub fn run(bytes: Vec<u8>) {
   let res = parse_pe_file.parse_next(&mut bytes);
 
   println!("res: {:#?}", res.unwrap().headers.nt_headers);
+  pretty_print_bytes(bytes);
 }
 
 fn pretty_print_bytes(bytes: &[u8]) {

@@ -183,6 +183,7 @@ impl Into<u16> for Characteristics {
 }
 
 #[derive(Debug, Default)]
+#[allow(non_camel_case_types)]
 pub enum OptionalHeaderSubSystem {
   #[default]
   IMAGE_SUBSYSTEM_UNKNOWN, // 	An unknown subsystem
@@ -219,6 +220,104 @@ impl TryFrom<u16> for OptionalHeaderSubSystem {
       13 => Ok(Self::IMAGE_SUBSYSTEM_EFI_ROM),
       14 => Ok(Self::IMAGE_SUBSYSTEM_XBOX),
       16 => Ok(Self::IMAGE_SUBSYSTEM_WINDOWS_BOOT_APPLICATION),
+      _ => Err(()),
+    }
+  }
+}
+
+#[derive(Debug, Default, EnumIter, Clone)]
+#[allow(non_camel_case_types)]
+pub enum DLLCharacteristics {
+  #[default]
+  IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA,
+  IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE,
+  IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY,
+  IMAGE_DLLCHARACTERISTICS_NX_COMPAT,
+  IMAGE_DLLCHARACTERISTICS_NO_ISOLATION,
+  IMAGE_DLLCHARACTERISTICS_NO_SEH,
+  IMAGE_DLLCHARACTERISTICS_NO_BIND,
+  IMAGE_DLLCHARACTERISTICS_APPCONTAINER,
+  IMAGE_DLLCHARACTERISTICS_WDM_DRIVER,
+  IMAGE_DLLCHARACTERISTICS_GUARD_CF,
+  IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE,
+}
+
+impl Into<u16> for DLLCharacteristics {
+  fn into(self) -> u16 {
+    match self {
+      Self::IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA => 0x0020,
+      Self::IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE => 0x0040,
+      Self::IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY => 0x0080,
+      Self::IMAGE_DLLCHARACTERISTICS_NX_COMPAT => 0x0100,
+      Self::IMAGE_DLLCHARACTERISTICS_NO_ISOLATION => 0x0200,
+      Self::IMAGE_DLLCHARACTERISTICS_NO_SEH => 0x0400,
+      Self::IMAGE_DLLCHARACTERISTICS_NO_BIND => 0x0800,
+      Self::IMAGE_DLLCHARACTERISTICS_APPCONTAINER => 0x1000,
+      Self::IMAGE_DLLCHARACTERISTICS_WDM_DRIVER => 0x2000,
+      Self::IMAGE_DLLCHARACTERISTICS_GUARD_CF => 0x4000,
+      Self::IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE => 0x8000,
+    }
+  }
+}
+
+impl DLLCharacteristics {
+  pub fn from_u16(value: u16) -> Vec<DLLCharacteristics> {
+    let mut dll_characteristics = Vec::new();
+
+    for char in DLLCharacteristics::iter() {
+      let char = char.clone();
+      let val: u16 = char.clone().into();
+      if value & val != 0 {
+        dll_characteristics.push(char);
+      }
+    }
+
+    dll_characteristics
+  }
+}
+
+#[derive(Debug, Default, EnumIter, Clone)]
+#[allow(non_camel_case_types)]
+pub enum DataDirectoryTableField {
+  #[default]
+  EXPORT_TABLE,
+  IMPORT_TABLE,
+  RESOURCE_TABLE,
+  EXCEPTION_TABLE,
+  CERTIFICATE_TABLE,
+  BASE_RELOCATION_TABLE,
+  DEBUG,
+  ARCHITECTURE,
+  GLOBAL_PTR,
+  TLS_TABLE,
+  LOAD_CONFIG_TABLE,
+  BOUND_IMPORT,
+  IAT,
+  DELAY_IMPORT_DESCRIPTOR,
+  CLR_RUNTIME_HEADER,
+  RESERVED,
+}
+
+impl TryFrom<u32> for DataDirectoryTableField {
+  type Error = ();
+  fn try_from(value: u32) -> Result<Self, Self::Error> {
+    match value {
+      0 => Ok(Self::EXPORT_TABLE),
+      1 => Ok(Self::IMPORT_TABLE),
+      2 => Ok(Self::RESOURCE_TABLE),
+      3 => Ok(Self::EXCEPTION_TABLE),
+      4 => Ok(Self::CERTIFICATE_TABLE),
+      5 => Ok(Self::BASE_RELOCATION_TABLE),
+      6 => Ok(Self::DEBUG),
+      7 => Ok(Self::ARCHITECTURE),
+      8 => Ok(Self::GLOBAL_PTR),
+      9 => Ok(Self::TLS_TABLE),
+      10 => Ok(Self::LOAD_CONFIG_TABLE),
+      11 => Ok(Self::BOUND_IMPORT),
+      12 => Ok(Self::IAT),
+      13 => Ok(Self::DELAY_IMPORT_DESCRIPTOR),
+      14 => Ok(Self::CLR_RUNTIME_HEADER),
+      15 => Ok(Self::RESERVED),
       _ => Err(()),
     }
   }
