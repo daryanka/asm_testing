@@ -299,8 +299,8 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
       header.size_of_heap_commit = get_le_u32.parse_next(&mut optional_header_bytes)?;
       header.loader_flags = get_le_u32.parse_next(&mut optional_header_bytes)?;
       header.number_of_rva_and_sizes = get_le_u32.parse_next(&mut optional_header_bytes)?;
-      // number of rva and sizes should always be 16 with the last row (8 bytes) being 0
 
+      // number of rva and sizes should always be 16 with the last row (8 bytes) being 0
       let mut data_directories = Vec::new();
       for index in 0..header.number_of_rva_and_sizes {
         let virtual_address = get_le_u32.parse_next(&mut optional_header_bytes)?;
@@ -344,8 +344,8 @@ fn parse_nt_header<'s>(input: &mut &'s [u8]) -> PResult<NtHeaders> {
       header.size_of_heap_commit = get_le_u64.parse_next(&mut optional_header_bytes)?;
       header.loader_flags = get_le_u32.parse_next(&mut optional_header_bytes)?;
       header.number_of_rva_and_sizes = get_le_u32.parse_next(&mut optional_header_bytes)?;
-      // number of rva and sizes should always be 16 with the last row (8 bytes) being 0
 
+      // number of rva and sizes should always be 16 with the last row (8 bytes) being 0
       let mut data_directories = Vec::new();
       for index in 0..header.number_of_rva_and_sizes {
         let virtual_address = get_le_u32.parse_next(&mut optional_header_bytes)?;
