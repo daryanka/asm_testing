@@ -50,18 +50,3 @@ fn is_pe_executable(data: &Vec<u8>) -> bool {
   }
   return data[0..2] == [0x4d, 0x5a];
 }
-
-fn get_pe_dos_mz_header(data: &Vec<u8>) {
-  if data.len() < 64 {
-    return;
-  }
-  // WORD = 2 bytes (16 bits)
-  // DWORD = 4 bytes (32 bits)
-  // QWORD = 8 bytes (64 bits)
-
-  let dos_header = &data[0..64];
-  let signature = &dos_header[0..2];
-  let last_page_size = &dos_header[2..4];
-  let num_pages = &dos_header[4..6];
-  let num_relocation = &dos_header[6..8];
-}

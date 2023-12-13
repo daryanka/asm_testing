@@ -329,7 +329,21 @@ pub fn format_to_hex<T: LowerHex>(data: &T) -> String {
 
 pub fn get_ascii_string<'s>(input: &mut &'s [u8], len: usize) -> PResult<String> {
   let bytes = take_while(len, |b: u8| b.is_ascii()).parse_next(input)?;
-  let string = String::from_utf8(bytes.to_vec()).unwrap();
+  let string = String::from_utf8(bytes.to_vec())
+    .map_err(|_| ErrMode::from_error_kind(input, ErrorKind::Fail))?;
+  Ok(string)
+}
+
+pub fn get_utf8_null_terminated_string<'s>(input: &mut &'s [u8], len: usize) -> PResult<String> {
+  let bytes = take_while(len, |b: u8| b.is_ascii()).parse_next(input)?;
+  let bytes = bytes
+    .iter()
+    .take_while(|b| **b != 0)
+    .map(|b| *b)
+    .collect::<Vec<u8>>();
+
+  let string =
+    String::from_utf8(bytes).map_err(|_| ErrMode::from_error_kind(input, ErrorKind::Fail))?;
   Ok(string)
 }
 
