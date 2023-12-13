@@ -4,7 +4,7 @@ use crate::parser::utils::{
   Characteristics, DLLCharacteristics, DataDirectoryTableField, MachineType,
   OptionalHeaderSubSystem,
 };
-use winnow::error::ParserError;
+use iced_x86::Instruction;
 use winnow::stream::Stream;
 use winnow::PResult;
 use winnow::Parser;
@@ -17,6 +17,13 @@ mod utils;
 pub struct PEFile {
   headers: PEHeader,
   section_table: Vec<SectionEntry>,
+  sections_data: Vec<SectionData>,
+}
+
+#[derive(Debug, Default)]
+pub struct SectionData {
+  name: String,
+  data: Vec<Instruction>,
 }
 
 #[derive(Debug, Default)]
@@ -186,33 +193,19 @@ fn parse_pe_file<'s>(input: &mut &'s [u8]) -> PResult<PEFile> {
   let headers = parse_pe_header(input)?;
   let section_table = parse_sections_table(input, &headers)?;
   input.reset(start);
-  println!("len: {}", input.len());
-  // TODO
-  let _ = parse_text_section(input, &section_table, &headers.nt_headers.file_header)?;
+  let text_section = parse_text_section(input, &section_table, &headers.nt_headers.file_header)?;
 
   let pe_file = PEFile {
     headers,
     section_table,
+    sections_data: vec![text_section],
   };
-  return Ok(pe_file);
+
+  Ok(pe_file)
 }
 
-pub fn run(bytes: Vec<u8>) {
+pub fn parse_pe(bytes: Vec<u8>) -> Result<PEFile, ()> {
   let mut bytes = bytes.as_slice();
-  println!("original bytes: len {}", bytes.len());
-  let res = parse_pe_file.parse_next(&mut bytes);
-
-  println!("res: {:#?}", res);
-  // pretty_print_bytes(bytes);
-}
-
-pub fn pretty_print_bytes(bytes: &[u8]) {
-  for (index, byte) in bytes.iter().enumerate() {
-    if index % 16 == 0 && index != 0 {
-      println!();
-    }
-    print!("{:02x} ", byte);
-  }
-  println!();
-  println!();
+  let res = parse_pe_file.parse_next(&mut bytes).map_err(|_| ())?;
+  Ok(res)
 }

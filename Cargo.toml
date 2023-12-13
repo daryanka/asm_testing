@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 winnow = { version = "0.5.26" }
 strum = { version = "0.25.0", features = ["derive"] }
+iced-x86 = "1.20.0"

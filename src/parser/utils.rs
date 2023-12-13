@@ -43,6 +43,43 @@ pub enum MachineType {
   IMAGE_FILE_MACHINE_WCEMIPSV2,   // MIPS little-endian WCE v2
 }
 
+impl MachineType {
+  pub fn bitness(&self) -> u32 {
+    match self {
+      MachineType::IMAGE_FILE_MACHINE_UNKNOWN => 0,
+      MachineType::IMAGE_FILE_MACHINE_ALPHA => 32,
+      MachineType::IMAGE_FILE_MACHINE_ALPHA64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_AM33 => 32,
+      MachineType::IMAGE_FILE_MACHINE_AMD64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_ARM => 32,
+      MachineType::IMAGE_FILE_MACHINE_ARM64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_ARMNT => 32,
+      MachineType::IMAGE_FILE_MACHINE_AXP64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_EBC => 32,
+      MachineType::IMAGE_FILE_MACHINE_I386 => 32,
+      MachineType::IMAGE_FILE_MACHINE_IA64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_LOONGARCH32 => 32,
+      MachineType::IMAGE_FILE_MACHINE_LOONGARCH64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_M32R => 32,
+      MachineType::IMAGE_FILE_MACHINE_MIPS16 => 16,
+      MachineType::IMAGE_FILE_MACHINE_MIPSFPU => 32,
+      MachineType::IMAGE_FILE_MACHINE_MIPSFPU16 => 16,
+      MachineType::IMAGE_FILE_MACHINE_POWERPC => 32,
+      MachineType::IMAGE_FILE_MACHINE_POWERPCFP => 32,
+      MachineType::IMAGE_FILE_MACHINE_R4000 => 32,
+      MachineType::IMAGE_FILE_MACHINE_RISCV32 => 32,
+      MachineType::IMAGE_FILE_MACHINE_RISCV64 => 64,
+      MachineType::IMAGE_FILE_MACHINE_RISCV128 => 128,
+      MachineType::IMAGE_FILE_MACHINE_SH3 => 32,
+      MachineType::IMAGE_FILE_MACHINE_SH3DSP => 32,
+      MachineType::IMAGE_FILE_MACHINE_SH4 => 32,
+      MachineType::IMAGE_FILE_MACHINE_SH5 => 32,
+      MachineType::IMAGE_FILE_MACHINE_THUMB => 32,
+      MachineType::IMAGE_FILE_MACHINE_WCEMIPSV2 => 32,
+    }
+  }
+}
+
 impl Into<u16> for MachineType {
   fn into(self) -> u16 {
     match self {
@@ -93,6 +130,7 @@ impl TryFrom<u16> for MachineType {
       0x1c0 => Ok(MachineType::IMAGE_FILE_MACHINE_ARM),
       0xaa64 => Ok(MachineType::IMAGE_FILE_MACHINE_ARM64),
       0x1c4 => Ok(MachineType::IMAGE_FILE_MACHINE_ARMNT),
+      #[allow(unreachable_patterns)]
       0x284 => Ok(MachineType::IMAGE_FILE_MACHINE_AXP64),
       0xebc => Ok(MachineType::IMAGE_FILE_MACHINE_EBC),
       0x14c => Ok(MachineType::IMAGE_FILE_MACHINE_I386),
@@ -321,10 +359,6 @@ impl TryFrom<u32> for DataDirectoryTableField {
       _ => Err(()),
     }
   }
-}
-
-pub fn format_to_hex<T: LowerHex>(data: &T) -> String {
-  format!("{:0x} ", data)
 }
 
 pub fn get_ascii_string<'s>(input: &mut &'s [u8], len: usize) -> PResult<String> {
