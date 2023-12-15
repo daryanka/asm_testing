@@ -1,4 +1,3 @@
-use std::fmt::LowerHex;
 use strum::{EnumIter, IntoEnumIterator};
 use winnow::error::ErrMode;
 use winnow::error::ErrorKind;
@@ -46,7 +45,7 @@ pub enum MachineType {
 impl MachineType {
   pub fn bitness(&self) -> u32 {
     match self {
-      MachineType::IMAGE_FILE_MACHINE_UNKNOWN => 0,
+      MachineType::IMAGE_FILE_MACHINE_UNKNOWN => 64,
       MachineType::IMAGE_FILE_MACHINE_ALPHA => 32,
       MachineType::IMAGE_FILE_MACHINE_ALPHA64 => 64,
       MachineType::IMAGE_FILE_MACHINE_AM33 => 32,
@@ -69,7 +68,7 @@ impl MachineType {
       MachineType::IMAGE_FILE_MACHINE_R4000 => 32,
       MachineType::IMAGE_FILE_MACHINE_RISCV32 => 32,
       MachineType::IMAGE_FILE_MACHINE_RISCV64 => 64,
-      MachineType::IMAGE_FILE_MACHINE_RISCV128 => 128,
+      MachineType::IMAGE_FILE_MACHINE_RISCV128 => 64, // 128 not supported by iced
       MachineType::IMAGE_FILE_MACHINE_SH3 => 32,
       MachineType::IMAGE_FILE_MACHINE_SH3DSP => 32,
       MachineType::IMAGE_FILE_MACHINE_SH4 => 32,
