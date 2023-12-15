@@ -298,7 +298,6 @@ fn render_headers(f: &mut Frame, app: &mut App, size: Rect) {
   }
 
   let p = Paragraph::new(text)
-    .scroll((1, 0))
     .block(
       Block::default()
         .title(" .text ")
