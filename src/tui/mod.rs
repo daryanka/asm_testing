@@ -1,13 +1,15 @@
 use crate::parser::PEFile;
+use crossterm::event::EnableMouseCapture;
 use crossterm::{
   event::{self, KeyCode, KeyEventKind},
+  execute,
   terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
   ExecutableCommand,
 };
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::{prelude::*, widgets::*};
 use ratatui::{
-  prelude::{CrosstermBackend, Stylize, Terminal},
+  prelude::{CrosstermBackend, Terminal},
   widgets::Paragraph,
   Frame,
 };
@@ -33,6 +35,7 @@ struct App {
   tabs: Vec<Tab>,
   active_tab: Tab,
   data: PEFile,
+  data_scroll: usize,
   header_scroll: usize,
 }
 
@@ -42,6 +45,7 @@ impl App {
       tabs: vec![Tab::Disassembly, Tab::Headers],
       active_tab: Tab::Disassembly,
       data,
+      data_scroll: 0,
       header_scroll: 0,
     }
   }
@@ -58,21 +62,21 @@ impl App {
   }
 
   fn scroll_down(&mut self) {
-    if self.header_scroll < self.data.text_section.data.len() {
-      self.header_scroll += 1;
+    if self.data_scroll < self.data.text_section.data.len() {
+      self.data_scroll += 1;
     }
   }
 
   fn scroll_up(&mut self) {
-    if self.header_scroll > 0 {
-      self.header_scroll -= 1;
+    if self.data_scroll > 0 {
+      self.data_scroll -= 1;
     }
   }
 }
 
 pub fn draw(file_data: PEFile) -> anyhow::Result<()> {
   let mut app = App::new(file_data);
-  stdout().execute(EnterAlternateScreen)?;
+  execute!(stdout(), EnterAlternateScreen, EnableMouseCapture)?;
   enable_raw_mode()?;
   let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
   terminal.clear()?;
@@ -84,7 +88,17 @@ pub fn draw(file_data: PEFile) -> anyhow::Result<()> {
 
     // 60 fps
     if event::poll(std::time::Duration::from_millis(16))? {
-      if let event::Event::Key(key) = event::read()? {
+      let event = event::read()?;
+      if let event::Event::Mouse(event) = event {
+        if event.kind == event::MouseEventKind::ScrollDown {
+          app.scroll_down();
+        }
+        if event.kind == event::MouseEventKind::ScrollUp {
+          app.scroll_up();
+        }
+      }
+
+      if let event::Event::Key(key) = event {
         // break on ctrl+c or q
         if key.kind == KeyEventKind::Press
           && (key.modifiers == event::KeyModifiers::CONTROL && key.code == KeyCode::Char('c'))
@@ -98,13 +112,16 @@ pub fn draw(file_data: PEFile) -> anyhow::Result<()> {
           app.next_tab();
         }
 
-        // on up/down arrow keys, scroll the disassembly
-        if key.kind == KeyEventKind::Press && key.code == KeyCode::Up {
-          app.scroll_up();
+        if app.active_tab == Tab::Disassembly {
+          // on up/down arrow keys, scroll the disassembly
+          if key.kind == KeyEventKind::Press && key.code == KeyCode::Up {
+            app.scroll_up();
+          }
+          if key.kind == KeyEventKind::Press && key.code == KeyCode::Down {
+            app.scroll_down();
+          }
         }
-        if key.kind == KeyEventKind::Press && key.code == KeyCode::Down {
-          app.scroll_down();
-        }
+
         // move on scroll wheel
       }
     }
@@ -146,26 +163,19 @@ fn ui(f: &mut Frame, app: &mut App) {
 
   match app.active_tab {
     Tab::Disassembly => render_disassembly(f, app, chunks[1]),
-    Tab::Headers => render_disassembly(f, app, chunks[1]),
+    Tab::Headers => render_headers(f, app, chunks[1]),
   };
 
   // help section
-  let mut default_help: Vec<String> = vec![
-    "Press q to exit".to_owned(),
-    "Press tab to switch tabs".to_owned(),
+  let default_help = vec![
+    "Press q to exit".white(),
+    " | ".yellow(),
+    "Press tab to switch tabs".white(),
+    " | ".yellow(),
+    "Press up/down arrow keys or scroll wheel to scroll".white(),
   ];
-  match app.active_tab {
-    Tab::Disassembly => {
-      default_help.push("Press up/down arrow keys to scroll".to_owned());
-    }
-    Tab::Headers => {
-      default_help.push("Press up/down arrow keys to scroll".to_owned());
-    }
-  };
 
-  let help_text = format!(" {}", default_help.join(" | "));
-
-  let help = Paragraph::new(help_text)
+  let help = Paragraph::new(Line::from(default_help))
     .block(
       Block::default()
         .title(" Help ")
@@ -178,7 +188,7 @@ fn ui(f: &mut Frame, app: &mut App) {
 }
 
 fn render_disassembly(f: &mut Frame, app: &mut App, section_size: Rect) {
-  let top = app.data.text_section.data.get(app.header_scroll).unwrap();
+  let top = app.data.text_section.data.get(app.data_scroll).unwrap();
   let split = Layout::default()
     .direction(Direction::Horizontal)
     .constraints([Constraint::Min(0), Constraint::Length(27)])
@@ -198,13 +208,13 @@ fn render_disassembly(f: &mut Frame, app: &mut App, section_size: Rect) {
     .iter()
     .enumerate()
     .filter_map(|(i, l)| {
-      if i < app.header_scroll {
+      if i < app.data_scroll {
         return None;
       }
-      if i > app.header_scroll + left_height as usize {
+      if i > app.data_scroll + left_height as usize {
         return None;
       }
-      let real_index = i - app.header_scroll;
+      let real_index = i - app.data_scroll;
       let mut line_parts = vec![];
       if real_index == 0 {
         line_parts.push(format!("{:#8x}", l.offset).green().on_gray());
@@ -280,4 +290,24 @@ fn render_disassembly(f: &mut Frame, app: &mut App, section_size: Rect) {
   f.render_widget(right, split[1]);
 }
 
-fn render_headers(f: &mut Frame, app: &mut App, size: Rect) {}
+fn render_headers(f: &mut Frame, app: &mut App, size: Rect) {
+  let mut text = String::new();
+
+  for _ in 0..1000 {
+    text.push_str("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec eget odio eu ");
+  }
+
+  let p = Paragraph::new(text)
+    .scroll((1, 0))
+    .block(
+      Block::default()
+        .title(" .text ")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::White))
+        .padding(Padding::new(1, 0, 0, 0)),
+    )
+    .white()
+    .wrap(Wrap { trim: true });
+
+  f.render_widget(p, size);
+}
