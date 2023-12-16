@@ -41,6 +41,46 @@ struct App {
   header_lines: Vec<Line<'static>>,
 }
 
+fn get_common_values(data: &CommonOptionalHeaderFields) -> Vec<HeaderKeyValue> {
+  let mut common_lines: Vec<HeaderKeyValue> = Vec::new();
+
+  common_lines.push(HeaderKeyValue {
+    key: "Magic".to_owned(),
+    value: util_hex(&data.magic),
+  });
+
+  common_lines.push(HeaderKeyValue {
+    key: "major_linker_version".to_owned(),
+    value: util_hex(&data.major_linker_version),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "minor_linker_version".to_owned(),
+    value: util_hex(&data.minor_linker_version),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "size_of_code".to_owned(),
+    value: util_hex(&data.size_of_code),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "size_of_initialized_data".to_owned(),
+    value: util_hex(&data.size_of_initialized_data),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "size_of_uninitialized_data".to_owned(),
+    value: util_hex(&data.size_of_uninitialized_data),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "address_of_entry_point".to_owned(),
+    value: util_hex(&data.address_of_entry_point),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "base_of_code".to_owned(),
+    value: util_hex(&data.base_of_code),
+  });
+
+  common_lines
+}
+
 impl App {
   fn new(data: PEFile) -> Self {
     let mut temp = App {
@@ -778,46 +818,6 @@ struct HeaderKeyValue {
 
 fn util_hex<T: LowerHex>(value: &T) -> String {
   format!("{:#x}", value)
-}
-
-fn get_common_values(data: &CommonOptionalHeaderFields) -> Vec<HeaderKeyValue> {
-  let mut common_lines: Vec<HeaderKeyValue> = Vec::new();
-
-  common_lines.push(HeaderKeyValue {
-    key: "Magic".to_owned(),
-    value: util_hex(&data.magic),
-  });
-
-  common_lines.push(HeaderKeyValue {
-    key: "major_linker_version".to_owned(),
-    value: util_hex(&data.major_linker_version),
-  });
-  common_lines.push(HeaderKeyValue {
-    key: "minor_linker_version".to_owned(),
-    value: util_hex(&data.minor_linker_version),
-  });
-  common_lines.push(HeaderKeyValue {
-    key: "size_of_code".to_owned(),
-    value: util_hex(&data.size_of_code),
-  });
-  common_lines.push(HeaderKeyValue {
-    key: "size_of_initialized_data".to_owned(),
-    value: util_hex(&data.size_of_initialized_data),
-  });
-  common_lines.push(HeaderKeyValue {
-    key: "size_of_uninitialized_data".to_owned(),
-    value: util_hex(&data.size_of_uninitialized_data),
-  });
-  common_lines.push(HeaderKeyValue {
-    key: "address_of_entry_point".to_owned(),
-    value: util_hex(&data.address_of_entry_point),
-  });
-  common_lines.push(HeaderKeyValue {
-    key: "base_of_code".to_owned(),
-    value: util_hex(&data.base_of_code),
-  });
-
-  common_lines
 }
 
 fn render_headers(f: &mut Frame, app: &mut App, size: Rect) {
