@@ -565,8 +565,8 @@ pub fn draw(file_data: PEFile) -> anyhow::Result<()> {
       ui(frame, &mut app);
     })?;
 
-    // 60 fps
-    if event::poll(std::time::Duration::from_millis(16))? {
+    // 30 fps = 33ms, can use 16ms for 60fps
+    if event::poll(std::time::Duration::from_millis(33))? {
       let event = event::read()?;
       if let event::Event::Mouse(event) = event {
         if event.kind == event::MouseEventKind::ScrollDown {
