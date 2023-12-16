@@ -13,3 +13,5 @@ termcolor = "1.4.0"
 ratatui = "0.24.0"
 crossterm = "0.27.0"
 anyhow = "1.0.44"
+derive_more = "0.99.17"
+chrono = { version = "0.4.31", features = ["default"] }

@@ -1,4 +1,4 @@
-use crate::parser::PEFile;
+use crate::parser::{CommonOptionalHeaderFields, OptionalHeader, PEFile};
 use crossterm::event::EnableMouseCapture;
 use crossterm::{
   event::{self, KeyCode, KeyEventKind},
@@ -13,6 +13,8 @@ use ratatui::{
   widgets::Paragraph,
   Frame,
 };
+use std::cmp::max;
+use std::fmt::{format, LowerHex};
 use std::io::stdout;
 use strum::EnumIter;
 
@@ -62,14 +64,30 @@ impl App {
   }
 
   fn scroll_down(&mut self) {
-    if self.data_scroll < self.data.text_section.data.len() {
-      self.data_scroll += 1;
+    match self.active_tab {
+      Tab::Disassembly => {
+        if self.data_scroll < self.data.text_section.data.len() {
+          self.data_scroll += 1;
+        }
+      }
+      Tab::Headers => {
+        self.header_scroll += 1;
+      }
     }
   }
 
   fn scroll_up(&mut self) {
-    if self.data_scroll > 0 {
-      self.data_scroll -= 1;
+    match self.active_tab {
+      Tab::Disassembly => {
+        if self.data_scroll > 0 {
+          self.data_scroll -= 1;
+        }
+      }
+      Tab::Headers => {
+        if self.header_scroll > 0 {
+          self.header_scroll -= 1;
+        }
+      }
     }
   }
 }
@@ -112,14 +130,12 @@ pub fn draw(file_data: PEFile) -> anyhow::Result<()> {
           app.next_tab();
         }
 
-        if app.active_tab == Tab::Disassembly {
-          // on up/down arrow keys, scroll the disassembly
-          if key.kind == KeyEventKind::Press && key.code == KeyCode::Up {
-            app.scroll_up();
-          }
-          if key.kind == KeyEventKind::Press && key.code == KeyCode::Down {
-            app.scroll_down();
-          }
+        // on up/down arrow keys
+        if key.kind == KeyEventKind::Press && key.code == KeyCode::Up {
+          app.scroll_up();
+        }
+        if key.kind == KeyEventKind::Press && key.code == KeyCode::Down {
+          app.scroll_down();
         }
 
         // move on scroll wheel
@@ -166,25 +182,28 @@ fn ui(f: &mut Frame, app: &mut App) {
     Tab::Headers => render_headers(f, app, chunks[1]),
   };
 
-  // help section
-  let default_help = vec![
-    "Press q to exit".white(),
-    " | ".yellow(),
-    "Press tab to switch tabs".white(),
-    " | ".yellow(),
-    "Press up/down arrow keys or scroll wheel to scroll".white(),
-  ];
+  let mut default_help = vec![];
+  default_help.extend_from_slice(&helper_text("q".to_owned(), "Quit".to_owned()));
+  default_help.push(" | ".yellow());
+  default_help.extend_from_slice(&helper_text("tab".to_owned(), "Switch tabs".to_owned()));
+  default_help.push(" | ".yellow());
+  default_help.extend_from_slice(&helper_text("up/down".to_owned(), "Scroll".to_owned()));
 
   let help = Paragraph::new(Line::from(default_help))
     .block(
       Block::default()
         .title(" Help ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::White)),
+        .border_style(Style::default().fg(Color::White))
+        .padding(Padding::new(1, 0, 0, 0)),
     )
     .white();
 
   f.render_widget(help, chunks[2]);
+}
+
+fn helper_text(key: String, text: String) -> Vec<Span<'static>> {
+  vec!["<".white(), key.yellow(), "> ".white(), text.white()]
 }
 
 fn render_disassembly(f: &mut Frame, app: &mut App, section_size: Rect) {
@@ -290,23 +309,518 @@ fn render_disassembly(f: &mut Frame, app: &mut App, section_size: Rect) {
   f.render_widget(right, split[1]);
 }
 
+#[derive(Debug, Clone, Default)]
+struct HeaderKeyValue {
+  key: String,
+  value: String,
+}
+
+fn util_hex<T: LowerHex>(value: &T) -> String {
+  format!("{:#x}", value)
+}
+
+fn get_common_values(data: &CommonOptionalHeaderFields) -> Vec<HeaderKeyValue> {
+  let mut common_lines: Vec<HeaderKeyValue> = Vec::new();
+
+  common_lines.push(HeaderKeyValue {
+    key: "Magic".to_owned(),
+    value: util_hex(&data.magic),
+  });
+
+  common_lines.push(HeaderKeyValue {
+    key: "major_linker_version".to_owned(),
+    value: util_hex(&data.major_linker_version),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "minor_linker_version".to_owned(),
+    value: util_hex(&data.minor_linker_version),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "size_of_code".to_owned(),
+    value: util_hex(&data.size_of_code),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "size_of_initialized_data".to_owned(),
+    value: util_hex(&data.size_of_initialized_data),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "size_of_uninitialized_data".to_owned(),
+    value: util_hex(&data.size_of_uninitialized_data),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "address_of_entry_point".to_owned(),
+    value: util_hex(&data.address_of_entry_point),
+  });
+  common_lines.push(HeaderKeyValue {
+    key: "base_of_code".to_owned(),
+    value: util_hex(&data.base_of_code),
+  });
+
+  common_lines
+}
+
 fn render_headers(f: &mut Frame, app: &mut App, size: Rect) {
-  let mut text = String::new();
+  let mut lines: Vec<Line> = Vec::new();
 
-  for _ in 0..1000 {
-    text.push_str("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec eget odio eu ");
-  }
+  // DOS Headers
+  lines.push(Line::from(vec!["DOS Headers".yellow()]));
+  let mut dos_lines: Vec<HeaderKeyValue> = Vec::new();
 
-  let p = Paragraph::new(text)
+  dos_lines.push(HeaderKeyValue {
+    key: "Magic".to_owned(),
+    value: app.data.headers.dos_header.e_magic.clone(),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Bytes On last page".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_cblp),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Relocations".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_crlc),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Size of header in paragraphs".to_owned().to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_cparhdr),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Minimum extra paragraphs needed".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_minalloc),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Maximum extra paragraphs needed".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_maxalloc),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Initial (relative) SS value".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_ss),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Initial SP value".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_sp),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Checksum".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_csum),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Initial IP value".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_ip),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Initial (relative) CS value".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_cs),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "File address of relocation table".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_lfarlc),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Overlay number".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_ovno),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Reserved words".to_owned(),
+    value: app
+      .data
+      .headers
+      .dos_header
+      .e_res
+      .to_vec()
+      .iter()
+      .map(|x| format!("{:#x}", x))
+      .collect::<Vec<String>>()
+      .join(", "),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "OEM identifier (for e_oeminfo)".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_oemid),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "OEM information; e_oemid specific".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_oeminfo),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "Reserved words".to_owned(),
+    value: app
+      .data
+      .headers
+      .dos_header
+      .e_res2
+      .to_vec()
+      .iter()
+      .map(|x| format!("{:#x}", x))
+      .collect::<Vec<String>>()
+      .join(", "),
+  });
+  dos_lines.push(HeaderKeyValue {
+    key: "File address of new exe header".to_owned(),
+    value: util_hex(&app.data.headers.dos_header.e_lfanew),
+  });
+
+  let dos_lines = dos_lines
+    .iter()
+    .map(|x| {
+      let mut line_parts = vec![];
+      line_parts.push(" ".to_owned().into());
+      line_parts.push(x.key.clone().yellow());
+      line_parts.push(" ".into());
+      line_parts.push(x.value.clone().white());
+      Line::from(line_parts)
+    })
+    .collect::<Vec<Line>>();
+
+  lines.extend_from_slice(&dos_lines);
+
+  // NT Headers
+  lines.push(Line::from(vec!["  ".into()]));
+  lines.push(Line::from(vec!["NT Headers".yellow()]));
+
+  let mut nt_lines: Vec<HeaderKeyValue> = Vec::new();
+  nt_lines.push(HeaderKeyValue {
+    key: "Signature".to_owned(),
+    value: app.data.headers.nt_headers.signature.clone(),
+  });
+
+  nt_lines.push(HeaderKeyValue {
+    key: "Machine".to_owned(),
+    value: app
+      .data
+      .headers
+      .nt_headers
+      .file_header
+      .machine
+      .clone()
+      .into(),
+  });
+  nt_lines.push(HeaderKeyValue {
+    key: "number_of_sections".to_owned(),
+    value: util_hex(&app.data.headers.nt_headers.file_header.number_of_sections),
+  });
+
+  let time_date_stamp = app.data.headers.nt_headers.file_header.time_date_stamp;
+  let time_date_stamp = match chrono::NaiveDateTime::from_timestamp_opt(time_date_stamp as i64, 0) {
+    Some(x) => x.format("%Y-%m-%d %H:%M:%S").to_string(),
+    None => "Not a valid timestamp".to_owned(),
+  };
+  nt_lines.push(HeaderKeyValue {
+    key: "time_date_stamp".to_owned(),
+    value: time_date_stamp,
+  });
+  nt_lines.push(HeaderKeyValue {
+    key: "pointer_to_symbol_table".to_owned(),
+    value: util_hex(
+      &app
+        .data
+        .headers
+        .nt_headers
+        .file_header
+        .pointer_to_symbol_table,
+    ),
+  });
+  nt_lines.push(HeaderKeyValue {
+    key: "number_of_symbols".to_owned(),
+    value: util_hex(&app.data.headers.nt_headers.file_header.number_of_symbols),
+  });
+  nt_lines.push(HeaderKeyValue {
+    key: "size_of_optional_header".to_owned(),
+    value: util_hex(
+      &app
+        .data
+        .headers
+        .nt_headers
+        .file_header
+        .size_of_optional_header,
+    ),
+  });
+  nt_lines.push(HeaderKeyValue {
+    key: "Characteristics".to_owned(),
+    value: app
+      .data
+      .headers
+      .nt_headers
+      .file_header
+      .characteristics
+      .characteristics
+      .iter()
+      .map(|x| {
+        let x: &str = x.into();
+        x.to_owned()
+      })
+      .collect::<Vec<String>>()
+      .join(", "),
+  });
+
+  //  Optional Header
+  let nt_optional_header_lines = match &app.data.headers.nt_headers.optional_header {
+    Some(optional_headers) => match optional_headers {
+      OptionalHeader::ImageOptionalHeader32(val) => {
+        let mut lines = get_common_values(&val.common);
+        lines.push(HeaderKeyValue::default());
+
+        lines.push(HeaderKeyValue {
+          key: "base_of_data".to_owned(),
+          value: util_hex(&val.base_of_data),
+        });
+        lines.push(HeaderKeyValue {
+          key: "image_base".to_owned(),
+          value: util_hex(&val.image_base),
+        });
+        lines.push(HeaderKeyValue {
+          key: "section_alignment".to_owned(),
+          value: util_hex(&val.section_alignment),
+        });
+        lines.push(HeaderKeyValue {
+          key: "file_alignment".to_owned(),
+          value: util_hex(&val.file_alignment),
+        });
+        lines.push(HeaderKeyValue {
+          key: "major_operating_system_version".to_owned(),
+          value: util_hex(&val.major_operating_system_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "minor_operating_system_version".to_owned(),
+          value: util_hex(&val.minor_operating_system_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "major_image_version".to_owned(),
+          value: util_hex(&val.major_image_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "minor_image_version".to_owned(),
+          value: util_hex(&val.minor_image_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "major_subsystem_version".to_owned(),
+          value: util_hex(&val.major_subsystem_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "minor_subsystem_version".to_owned(),
+          value: util_hex(&val.minor_subsystem_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "win32_version_value".to_owned(),
+          value: util_hex(&val.win32_version_value),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_image".to_owned(),
+          value: util_hex(&val.size_of_image),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_headers".to_owned(),
+          value: util_hex(&val.size_of_headers),
+        });
+        lines.push(HeaderKeyValue {
+          key: "checksum".to_owned(),
+          value: util_hex(&val.checksum),
+        });
+        lines.push(HeaderKeyValue {
+          key: "subsystem".to_owned(),
+          value: {
+            let str: &str = val.subsystem.clone().into();
+            str.to_owned()
+          },
+        });
+        lines.push(HeaderKeyValue {
+          key: "dll_characteristics".to_owned(),
+          value: val
+            .dll_characteristics
+            .iter()
+            .map(|x| {
+              let str: &str = x.into();
+              str.to_owned()
+            })
+            .collect::<Vec<String>>()
+            .join(", "),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_stack_reserve".to_owned(),
+          value: util_hex(&val.size_of_stack_reserve),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_stack_commit".to_owned(),
+          value: util_hex(&val.size_of_stack_commit),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_heap_reserve".to_owned(),
+          value: util_hex(&val.size_of_heap_reserve),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_heap_commit".to_owned(),
+          value: util_hex(&val.size_of_heap_commit),
+        });
+        lines.push(HeaderKeyValue {
+          key: "loader_flags".to_owned(),
+          value: util_hex(&val.loader_flags),
+        });
+        lines.push(HeaderKeyValue {
+          key: "number_of_rva_and_sizes".to_owned(),
+          value: util_hex(&val.number_of_rva_and_sizes),
+        });
+        lines.push(HeaderKeyValue {
+          key: "data_directories".to_owned(),
+          value: val
+            .data_directories
+            .iter()
+            .map(|x| {
+              let s: &str = x.field.clone().into();
+              s.to_owned()
+            })
+            .collect::<Vec<String>>()
+            .join(", "),
+        });
+
+        lines
+      }
+      OptionalHeader::ImageOptionalHeader64(val) => {
+        let mut lines = get_common_values(&val.common);
+
+        lines.push(HeaderKeyValue::default());
+
+        lines.push(HeaderKeyValue {
+          key: "image_base".to_owned(),
+          value: util_hex(&val.image_base),
+        });
+        lines.push(HeaderKeyValue {
+          key: "section_alignment".to_owned(),
+          value: util_hex(&val.section_alignment),
+        });
+        lines.push(HeaderKeyValue {
+          key: "file_alignment".to_owned(),
+          value: util_hex(&val.file_alignment),
+        });
+        lines.push(HeaderKeyValue {
+          key: "major_operating_system_version".to_owned(),
+          value: util_hex(&val.major_operating_system_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "minor_operating_system_version".to_owned(),
+          value: util_hex(&val.minor_operating_system_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "major_image_version".to_owned(),
+          value: util_hex(&val.major_image_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "minor_image_version".to_owned(),
+          value: util_hex(&val.minor_image_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "major_subsystem_version".to_owned(),
+          value: util_hex(&val.major_subsystem_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "minor_subsystem_version".to_owned(),
+          value: util_hex(&val.minor_subsystem_version),
+        });
+        lines.push(HeaderKeyValue {
+          key: "win32_version_value".to_owned(),
+          value: util_hex(&val.win32_version_value),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_image".to_owned(),
+          value: util_hex(&val.size_of_image),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_headers".to_owned(),
+          value: util_hex(&val.size_of_headers),
+        });
+        lines.push(HeaderKeyValue {
+          key: "checksum".to_owned(),
+          value: util_hex(&val.checksum),
+        });
+        lines.push(HeaderKeyValue {
+          key: "subsystem".to_owned(),
+          value: {
+            let str: &str = val.subsystem.clone().into();
+            str.to_owned()
+          },
+        });
+        lines.push(HeaderKeyValue {
+          key: "dll_characteristics".to_owned(),
+          value: val
+            .dll_characteristics
+            .iter()
+            .map(|x| {
+              let str: &str = x.into();
+              str.to_owned()
+            })
+            .collect::<Vec<String>>()
+            .join(", "),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_stack_reserve".to_owned(),
+          value: util_hex(&val.size_of_stack_reserve),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_stack_commit".to_owned(),
+          value: util_hex(&val.size_of_stack_commit),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_heap_reserve".to_owned(),
+          value: util_hex(&val.size_of_heap_reserve),
+        });
+        lines.push(HeaderKeyValue {
+          key: "size_of_heap_commit".to_owned(),
+          value: util_hex(&val.size_of_heap_commit),
+        });
+        lines.push(HeaderKeyValue {
+          key: "loader_flags".to_owned(),
+          value: util_hex(&val.loader_flags),
+        });
+        lines.push(HeaderKeyValue {
+          key: "number_of_rva_and_sizes".to_owned(),
+          value: util_hex(&val.number_of_rva_and_sizes),
+        });
+        lines.push(HeaderKeyValue {
+          key: "data_directories".to_owned(),
+          value: val
+            .data_directories
+            .iter()
+            .map(|x| {
+              let s: &str = x.field.clone().into();
+              s.to_owned()
+            })
+            .collect::<Vec<String>>()
+            .join(", "),
+        });
+
+        lines
+      }
+      OptionalHeader::ImageOptionalHeaderRom(val) => get_common_values(&val.common),
+    },
+    _ => vec![],
+  };
+
+  nt_lines.push(HeaderKeyValue::default());
+  nt_lines.push(HeaderKeyValue {
+    key: "Optional Headers".to_owned(),
+    value: "".to_owned(),
+  });
+  nt_lines.extend_from_slice(&nt_optional_header_lines);
+
+  lines.extend_from_slice(
+    &nt_lines
+      .iter()
+      .map(|x| {
+        let mut line_parts = vec![];
+        line_parts.push(" ".to_owned().into());
+        line_parts.push(x.key.clone().yellow());
+        line_parts.push(" ".into());
+        line_parts.push(x.value.clone().white());
+        Line::from(line_parts)
+      })
+      .collect::<Vec<Line>>(),
+  );
+
+  let p = Paragraph::new(lines)
+    .scroll((app.header_scroll as u16, 0))
     .block(
       Block::default()
-        .title(" .text ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::White))
         .padding(Padding::new(1, 0, 0, 0)),
     )
-    .white()
-    .wrap(Wrap { trim: true });
+    .white();
 
   f.render_widget(p, size);
 }

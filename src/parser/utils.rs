@@ -1,4 +1,4 @@
-use strum::{EnumIter, IntoEnumIterator};
+use strum::{EnumIter, IntoEnumIterator, IntoStaticStr};
 use winnow::error::ErrMode;
 use winnow::error::ErrorKind;
 use winnow::error::ParserError;
@@ -6,7 +6,7 @@ use winnow::token::take_while;
 use winnow::PResult;
 use winnow::Parser;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 #[allow(non_camel_case_types)]
 pub enum MachineType {
   #[default]
@@ -40,6 +40,47 @@ pub enum MachineType {
   IMAGE_FILE_MACHINE_SH5,         // Hitachi SH5
   IMAGE_FILE_MACHINE_THUMB,       // Thumb
   IMAGE_FILE_MACHINE_WCEMIPSV2,   // MIPS little-endian WCE v2
+}
+
+impl Into<String> for MachineType {
+  fn into(self) -> String {
+    match self {
+      Self::IMAGE_FILE_MACHINE_UNKNOWN => {
+        "The content of this field is assumed to be applicable to any machine type".to_owned()
+      }
+      Self::IMAGE_FILE_MACHINE_ALPHA => "Alpha AXP, 32-bit address space".to_owned(),
+      Self::IMAGE_FILE_MACHINE_ALPHA64 => "Alpha 64, 64-bit address space".to_owned(),
+      Self::IMAGE_FILE_MACHINE_AM33 => "Matsushita AM33".to_owned(),
+      Self::IMAGE_FILE_MACHINE_AMD64 => "x64".to_owned(),
+      Self::IMAGE_FILE_MACHINE_ARM => "ARM little endian".to_owned(),
+      Self::IMAGE_FILE_MACHINE_ARM64 => "ARM64 little endian".to_owned(),
+      Self::IMAGE_FILE_MACHINE_ARMNT => "ARM Thumb-2 little endian".to_owned(),
+      Self::IMAGE_FILE_MACHINE_AXP64 => "AXP 64 (Same as Alpha 64)".to_owned(),
+      Self::IMAGE_FILE_MACHINE_EBC => "EFI byte code".to_owned(),
+      Self::IMAGE_FILE_MACHINE_I386 => {
+        "Intel 386 or later processors and compatible processors".to_owned()
+      }
+      Self::IMAGE_FILE_MACHINE_IA64 => "Intel Itanium processor family".to_owned(),
+      Self::IMAGE_FILE_MACHINE_LOONGARCH32 => "LoongArch 32-bit processor family".to_owned(),
+      Self::IMAGE_FILE_MACHINE_LOONGARCH64 => "LoongArch 64-bit processor family".to_owned(),
+      Self::IMAGE_FILE_MACHINE_M32R => "Mitsubishi M32R little endian".to_owned(),
+      Self::IMAGE_FILE_MACHINE_MIPS16 => "MIPS16".to_owned(),
+      Self::IMAGE_FILE_MACHINE_MIPSFPU => "MIPS with FPU".to_owned(),
+      Self::IMAGE_FILE_MACHINE_MIPSFPU16 => "MIPS16 with FPU".to_owned(),
+      Self::IMAGE_FILE_MACHINE_POWERPC => "Power PC little endian".to_owned(),
+      Self::IMAGE_FILE_MACHINE_POWERPCFP => "Power PC with floating point support".to_owned(),
+      Self::IMAGE_FILE_MACHINE_R4000 => "MIPS little endian".to_owned(),
+      Self::IMAGE_FILE_MACHINE_RISCV32 => "RISC-V 32-bit address space".to_owned(),
+      Self::IMAGE_FILE_MACHINE_RISCV64 => "RISC-V 64-bit address space".to_owned(),
+      Self::IMAGE_FILE_MACHINE_RISCV128 => "RISC-V 128-bit address space".to_owned(),
+      Self::IMAGE_FILE_MACHINE_SH3 => "Hitachi SH3".to_owned(),
+      Self::IMAGE_FILE_MACHINE_SH3DSP => "Hitachi SH3 DSP".to_owned(),
+      Self::IMAGE_FILE_MACHINE_SH4 => "Hitachi SH4".to_owned(),
+      Self::IMAGE_FILE_MACHINE_SH5 => "Hitachi SH5".to_owned(),
+      Self::IMAGE_FILE_MACHINE_THUMB => "Thumb".to_owned(),
+      Self::IMAGE_FILE_MACHINE_WCEMIPSV2 => "MIPS little-endian WCE v2".to_owned(),
+    }
+  }
 }
 
 impl MachineType {
@@ -157,7 +198,7 @@ impl TryFrom<u16> for MachineType {
   }
 }
 
-#[derive(Debug, Default, EnumIter, Clone)]
+#[derive(Debug, Default, EnumIter, Clone, IntoStaticStr)]
 #[allow(non_camel_case_types)]
 pub enum Characteristics {
   #[default]
@@ -219,7 +260,7 @@ impl Into<u16> for Characteristics {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, IntoStaticStr, Clone)]
 #[allow(non_camel_case_types)]
 pub enum OptionalHeaderSubSystem {
   #[default]
@@ -262,7 +303,7 @@ impl TryFrom<u16> for OptionalHeaderSubSystem {
   }
 }
 
-#[derive(Debug, Default, EnumIter, Clone)]
+#[derive(Debug, Default, EnumIter, Clone, IntoStaticStr)]
 #[allow(non_camel_case_types)]
 pub enum DLLCharacteristics {
   #[default]
@@ -313,7 +354,7 @@ impl DLLCharacteristics {
   }
 }
 
-#[derive(Debug, Default, EnumIter, Clone)]
+#[derive(Debug, Default, EnumIter, Clone, IntoStaticStr)]
 #[allow(non_camel_case_types)]
 pub enum DataDirectoryTableField {
   #[default]
