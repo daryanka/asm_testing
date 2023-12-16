@@ -829,7 +829,8 @@ fn render_headers(f: &mut Frame, app: &mut App, size: Rect) {
         .border_style(Style::default().fg(Color::White))
         .padding(Padding::new(1, 0, 0, 0)),
     )
-    .white();
+    .white()
+    .wrap(Wrap { trim: false });
 
   f.render_widget(p, size);
 }
